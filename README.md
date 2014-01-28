@@ -21,7 +21,7 @@ This layer is designed so you don't need to learn a whole new way of working wit
 
 Example
 -------
-
+```php
   require_once("database.php");
   
   $db = new Database("mysql://user:pass@localhost/database");
@@ -45,3 +45,4 @@ Example
   $db->update("users", array("name" => "Bob"),"name = "User");
   
   $db->delete("users", "name = 'Bob'");
+```
