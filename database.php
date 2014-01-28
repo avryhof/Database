@@ -25,11 +25,21 @@
 		
 		$db = new Database(host, username, password, database);
 		
+		KNOWN ISSUES:
+		
+		- Minimal Result Classes
+		- Can't use "@" symbol in passwords with URL formed DSN.
+		
 */	
 
 Class Database {
  	var $db, $last_query, $conn, $affected_rows, $connect_error, $last, $errno, $error, $exists, $parent_class, $sqlite_version;
  	
+	/* **
+	 * Initialize the Class with the database Info.
+	 * The database parameters can be passed as a DSN Similar to what PDO uses, an array, 
+	 * or with the same parameters as the Mysqli class.
+	 */
  	function __construct() {
  	 	switch(func_num_args()) {
  	 	 	case 5:
@@ -42,13 +52,19 @@ Class Database {
 			   $dsn = func_get_arg(0);
  	 	}
 		
+		/* **
+		 * Reads the data above and parses into a database connection.
+		 */
  	 	$this->db = $this->parseDSN($dsn);
 		 	 	
  	 	switch($this->db['phptype']) {
- 	 		case "sqlite":
+ 	 		case ("sqlite" || "sqlite2" || "sqlite3"):
 				$this->exists = file_exists($this->db['database']);
 				$this->sqlite_version = (class_exists("SQLite3") ? 3 : 2);
 				
+				/* **
+				 * Always try to use SQlite 3 first, then fallback to SQlite2
+				 */
 				if ($this->sqlite_version == 3) {
 					$this->conn = new SQLite3($this->db['database']);
 				} else {
@@ -56,17 +72,29 @@ Class Database {
  	 				if (!empty($this->connect_error)) { die("<pre>" . $this->connect_error . "</pre>"); }
 				}
  	 			break;
- 	 		case "mysql":
- 	 			$this->conn = mysql_connect($this->db['hostspec'],$this->db['username'],$this->db['password']);
- 	 			if (!$this->conn) { $this->connect_error = mysql_error($this->conn); } else { mysql_select_db($this->db['database'],$this->conn); }
- 	 			break;
- 	 		case "mysqli":
- 	 			$this->conn = mysqli_connect($this->db['hostspec'],$this->db['username'],$this->db['password'],$this->db['database']);
+ 	 		case ("mysql" || "mysqli"):
+				/* **
+				 * Always try to use the MySQli Class if it exists. 
+				 * If not, fallback to mysql and mimic MysQli
+				 */
+				if (class_exists("MySQLi")) {
+					$this->db['phptype'] = "mysqli";
+					$this->conn = mysqli_connect($this->db['hostspec'],$this->db['username'],$this->db['password'],$this->db['database']);
+				} else {
+					$this->db['phptype'] = "mysql";
+					$this->conn = mysql_connect($this->db['hostspec'],$this->db['username'],$this->db['password']);
+					if (!$this->conn) { $this->connect_error = mysql_error($this->conn); } else { mysql_select_db($this->db['database'],$this->conn); }
+				}
  	 			break;
  	 	}
  	 	$this->check_errors();
 	} 	
 	
+	/* **
+	 * Execute the SQL Query and return the appropriate Result Class.
+	 * All abstractions fill in errors where appropriate, count rows, store the last query 
+	 * and return a result class.
+	 */
  	function query($query) {
  	 	$this->last_query = $query;
  	 	switch($this->db['phptype']) {
@@ -102,6 +130,9 @@ Class Database {
  	 	}
  	}
 	
+	/* **
+	 * Simply determines if the value is a number of string, and escapes if needed.
+	 */
  	function escape($string) { 
  	 	if (is_numeric($string)) {
  	 	 	return $string;
@@ -110,6 +141,9 @@ Class Database {
  	 	}
  	}
  	
+	/* **
+	 * Passes the string to the appropriate database escape command.
+	 */
  	function real_escape_string($string) {
  	 	switch($this->db['phptype']) {
  	 		case "sqlite":
@@ -128,14 +162,26 @@ Class Database {
  	 	}
  	}
 	
-	function select($table, $item_id, $assoc = false) {
-		$q = "SELECT * FROM $table WHERE id=$item_id";
+	/* **
+	 * A simple select function to select an item from a database table by the unique key and either
+	 * Return it as a database result class, or associative array.
+	 */	
+	function select($table, $item_id, $assoc = false, $keyname = "id") {
+		$q = "SELECT * FROM ".$this->encapsulate_column_name($table)." WHERE ".$this->encapsulate_column_name($keyname)."=".$this->escape($item_id);
 		return ($assoc ? $this->query($q)->fetch_assoc() : $this->query($q));
 	}
  	
- 	/* Query Commands ... INSERT, UPDATE, DELETE */
+ 	/* ************************************************************
+	 * Query Commands ... INSERT, UPDATE, DELETE 
+	 * ************************************************************
+	 */
+	 
+	/* **
+	 * Insert an array as a row in the database. (The reverse of fetch_assoc)
+	 * Always encapsulates columnn names/keys appropriately, and escapes strings appropriately.
+	 */
 	function insert($table, $data) {
-		$q = "INSERT INTO $table ";
+		$q = "INSERT INTO ".$this->encapsulate_column_name($table)." ";
 		$v=''; $n='';
 		foreach($data as $key=>$val) {
 			$n .=" ".$this->encapsulate_column_name($key).", ";
@@ -151,8 +197,12 @@ Class Database {
 		return $this->query($q);
 	}
 	
+	/* **
+	 * Updates a row with valuse passed in from an associative array.
+	 * Always encapsulates/escapes where needed.
+	 */
 	function update($table, $data, $where) {
-		$q="UPDATE ".$table." SET ";
+		$q="UPDATE ".$this->encapsulate_column_name($table)." SET ";
 		foreach($data as $key=>$val) {
 			if(strtolower($val)=='null') {
 				$q.= $this->encapsulate_column_name($key)." = NULL, ";
@@ -166,13 +216,20 @@ Class Database {
 		return $this->query($q);
 	}
 	
+	/* **
+	 * Delete a row from $table where $where is true
+	 */
 	function delete($table, $where) {
-		$q="DELETE FROM ".$table." WHERE $where;";
+		$q="DELETE FROM ".$this->encapsulate_column_name($table)." WHERE $where;";
 		return $this->query($q);
 	}
 	
+	/* **
+	 * Retrieves an entire database table as an associative array so it can be processed with foreach
+	 * and other array functions.
+	 */
 	function table2array($table) {
-		$items = $this->query("SELECT * FROM $table");
+		$items = $this->query("SELECT * FROM ".$this->encapsulate_column_name($table));
 		$retn = array();
 		while($item = $items->fetch_assoc()) {
 			$retn["$item[key]"] = $item['val'];
@@ -183,7 +240,7 @@ Class Database {
 	/* **
 	 * Check to see if $data exists in $table, and return it if it does, or false if not.
 	 */
-	function record_exists($table, $data) {
+	function record_exists($table, $data, $assoc = true) {
 		$pairs = array();
 		foreach($data as $key => $value) {
 			if (!is_numeric($value)) {
@@ -193,27 +250,35 @@ Class Database {
 			}
 		}
 		$where = implode(" AND ", $pairs);
-		$records = $this->query("SELECT * FROM $table WHERE $where");
+		$records = $this->query("SELECT * FROM ".$this->encapsulate_column_name($table)." WHERE $where");
 		if ($records->num_rows > 0) {
-			return $records;
+			return ($assoc ? $records->fetch_assoc() : $records);
 		} else {
 			return false;
 		}
 	}
 	
+	/* **
+	 * Loads a file containing SQL Commands and runs it.
+	 * NOTE: The only processing done to the SQL file is splitting it down to lines and runnign them.
+	 * No encapsulation, escaping, or other processing is performed.
+	 */
 	function run($sql_file) {
 		$sql_file_contents = file_get_contents($sql_file);
 		$rawsql = explode("\n",$sql_file_contents);
 		$q = "";
 		$clean_query = "";
 		foreach($rawsql as $sql_line) {
+			/* Strip Comments since some Database Engines will try to execute them. */
 			if(trim($sql_line) != "" && strpos($sql_line, "--") === false) {
 				$clean_query .= $sql_line;
 				if(preg_match("/(.*);/", $clean_query)) {
 					$clean_query = stripslashes(substr($clean_query, 0, strlen($clean_query)));
 					$q = $clean_query;
+					/* We do Set last_query so you can find the line that errored on */
 					$this->last_query = $q;
 					$result = $this->query($q);
+					/* Perform error checking at the end of each completed query. */
 					if (!$result) { 
 						die("<pre>" . print_r($this->error_details(),true) . "</pre>"); 
 					} else {
@@ -225,7 +290,10 @@ Class Database {
 		}
 	}	
 	
-	/* Error Handling */
+	/* **
+	 * Error Handling 
+	 * Sets ->errno and ->error so you can detect and display errors.
+	 */
  	private function check_errors() {
  	 	switch($this->db['phptype']) {
  	 		case "sqlite":
@@ -252,10 +320,16 @@ Class Database {
  	 
  	}
  	
+	/* **
+	 * Return an array with the query, error number, and error message.
+	 */
  	function error_details() {
  	 	return array("query" => $this->last_query, "errno" => $this->errno, "error" => $this->error);
  	}
 	
+	/* **
+	 * Returns a column or table name with the appropriate encapsulation characters. around it.
+	 */
 	function encapsulate_column_name($column_name) {
 		switch($this->db['phptype']) {
  	 		case "sqlite":
@@ -281,6 +355,7 @@ Class Database {
 	 	if (is_array($dsn)) { 
 			return $dsn; 
 		} else {
+			/* Regular Expressions to match pieces of the DSN */
 		 	$dsn_match = "|^(?P<phptype>.*?)://(?P<parameters>.*?)/(?P<db>.*?)$|i";
 		 	$parameter_match = "|^(?P<username>.*?):(?P<password>.*?)@(?P<hostspec>.*?)$|i";
 		 	$args_match = '|^(?P<database>.*?)\?(?P<args>.*?)$|';
@@ -288,6 +363,7 @@ Class Database {
 		 	/* First, pick out the phptype, database, and gunk in the middle */
 			preg_match($dsn_match,$dsn,$matches['base']);
 			/* Next, parse the gunk in the middle into username, host, and password */
+			/* BUG: If the password has an @ symbol in it, it has to be passed in as an array. */
 			if (!empty($matches['base']['parameters'])) { preg_match($parameter_match,$matches['base']['parameters'],$matches['parameters']); }
 			/* Then, parse the database to see if any commandline parameters were passed */
 			if (substr_count($matches['base']['db'],"?") > 0) { preg_match($args_match,$matches['base']['db'],$matches['args']); }
@@ -321,7 +397,16 @@ Class Database {
     }
 }
 
+/* *****************************************************************************************************
+ * Result Classes
+ *
+ * These classes are not very developed, other than the methods I use most often.
+ * *****************************************************************************************************
+ */
 
+/* **
+ * Sqlite Result Class designed to work like the MySqli result class.
+ */
 class sqlite_result {
  	var $result 	= NULL;
  	var $conn		= NULL;
@@ -353,6 +438,11 @@ class sqlite_result {
 	}
 }
 
+/* **
+ * Sqlites Result Class designed to work like the MySqli result class.
+ *
+ * NOTE: This class is very minimal, as the SQlite3_result class for PHP isn't very developed.
+ */
 class sqlite3_result {
  	var $result 	= NULL;
  	var $conn		= NULL;
@@ -400,6 +490,9 @@ class sqlite3_result {
 	}
 }
 
+/* **
+ * Mysql Result Class designed to work like the MySqli result class.
+ */
 class mysql_result {
  	var $result 	= NULL;
  	var $conn		= NULL;
