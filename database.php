@@ -57,36 +57,33 @@ Class Database {
 		 */
  	 	$this->db = $this->parseDSN($dsn);
 		 	 	
- 	 	switch($this->db['phptype']) {
- 	 		case ("sqlite" || "sqlite2" || "sqlite3"):
-				$this->exists = file_exists($this->db['database']);
-				$this->sqlite_version = (class_exists("SQLite3") ? 3 : 2);
-				
-				/* **
-				 * Always try to use SQlite 3 first, then fallback to SQlite2
-				 */
-				if ($this->sqlite_version == 3) {
-					$this->conn = new SQLite3($this->db['database']);
-				} else {
-					$this->conn = sqlite_open($this->db['database'],(!empty($this->db['args']['type']) ? $this->db['args']['type'] : 0666), $this->connect_error);
- 	 				if (!empty($this->connect_error)) { die("<pre>" . $this->connect_error . "</pre>"); }
-				}
- 	 			break;
- 	 		case ("mysql" || "mysqli"):
-				/* **
-				 * Always try to use the MySQli Class if it exists. 
-				 * If not, fallback to mysql and mimic MysQli
-				 */
-				if (class_exists("MySQLi")) {
-					$this->db['phptype'] = "mysqli";
-					$this->conn = mysqli_connect($this->db['hostspec'],$this->db['username'],$this->db['password'],$this->db['database']);
-				} else {
-					$this->db['phptype'] = "mysql";
-					$this->conn = mysql_connect($this->db['hostspec'],$this->db['username'],$this->db['password']);
-					if (!$this->conn) { $this->connect_error = mysql_error($this->conn); } else { mysql_select_db($this->db['database'],$this->conn); }
-				}
- 	 			break;
- 	 	}
+		if (in_array($this->db['phptype'],array("sqlite","sqlite2","sqlite3"))) {
+			$this->exists = file_exists($this->db['database']);
+			$this->sqlite_version = (class_exists("SQLite3") ? 3 : 2);
+			
+			/* **
+			 * Always try to use SQlite 3 first, then fallback to SQlite2
+			 */
+			if ($this->sqlite_version == 3) {
+				$this->conn = new SQLite3($this->db['database']);
+			} else {
+				$this->conn = sqlite_open($this->db['database'],(!empty($this->db['args']['type']) ? $this->db['args']['type'] : 0666), $this->connect_error);
+				if (!empty($this->connect_error)) { die("<pre>" . $this->connect_error . "</pre>"); }
+			}
+		} elseif (in_array($this->db['phptype'],array("mysql","mysqli"))) {
+			/* **
+			 * Always try to use the MySQli Class if it exists. 
+			 * If not, fallback to mysql and mimic MysQli
+			 */
+			if (class_exists("MySQLi")) {
+				$this->db['phptype'] = "mysqli";
+				$this->conn = mysqli_connect($this->db['hostspec'],$this->db['username'],$this->db['password'],$this->db['database']);
+			} else {
+				$this->db['phptype'] = "mysql";
+				$this->conn = mysql_connect($this->db['hostspec'],$this->db['username'],$this->db['password']);
+				if (!$this->conn) { $this->connect_error = mysql_error($this->conn); } else { mysql_select_db($this->db['database'],$this->conn); }
+			}
+		}
  	 	$this->check_errors();
 	} 	
 	
