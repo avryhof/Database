@@ -29,6 +29,8 @@
 
 Class Database {
  	var $db, $last_query, $conn, $affected_rows, $connect_error, $last, $errno, $error, $exists, $parent_class, $sqlite_version;
+ 	var $lat_col = "latitude";
+	var $lon_col = "longitude";
  	
  	function __construct() {
  	 	switch(func_num_args()) {
@@ -132,7 +134,21 @@ Class Database {
 		$q = "SELECT * FROM $table WHERE id=$item_id";
 		return ($assoc ? $this->query($q)->fetch_assoc() : $this->query($q));
 	}
- 	
+  
+  /* Select places with coordinates within $radius miles/kilometers of a point */
+	function select_geo($table, $latitude, $longitude, $radius = 0, $results = 0, $miles = true, $additional_where = false) {
+		$coord_cols = $this->geo_detect_coord_cols($table);
+		
+		$q = "SELECT *, (".($miles ? "3959" : "6371")." * acos(cos(radians(".$latitude.")) * cos(radians(".$this->lat_col.")) * cos(radians(".$this->lon_col.") - radians(".$longitude.")) + sin(radians(".$latitude.")) * sin(radians(".$this->lat_col.")))) AS distance FROM `".$table."`";
+    
+		if ($radius > 0) { $q .= " HAVING distance < ".$radius; }
+    if ($additional_where !== false) { $q.= "WHERE $additional_where"; }
+		$q .= " ORDER BY distance";
+		if ($results > 0) { $q .= " LIMIT $results;"; }
+		
+		return $this->query($q);
+	}
+   	
  	/* Query Commands ... INSERT, UPDATE, DELETE */
 	function insert($table, $data) {
 		$q = "INSERT INTO $table ";
@@ -268,6 +284,17 @@ Class Database {
 				return "`".$column_name."`";
  	 			break;
  	 	}		
+	}
+  
+  function geo_detect_coord_cols($table) {
+		$res = $this->query("SELECT * FROM `$table` LIMIT 1")->fetch_assoc();
+		$lat_keys = array("lat","latitude");
+		$lon_keys = array("lon","lng","longitude");
+		foreach($res as $res_key => $res_val) {
+			if (in_array($res_key,$lat_keys)) { $this->lat_col = $res_key; }
+			if (in_array($res_key,$lon_keys)) { $this->lon_col = $res_key; }
+		}
+		return array("lat_col"=>$this->lat_col,"lon_col"=>$this->lon_col);
 	} 	
 	
 	/* ** 
