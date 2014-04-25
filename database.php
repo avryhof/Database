@@ -136,7 +136,7 @@ Class Database {
 		return ($assoc ? $this->query($q)->fetch_assoc() : $this->query($q));
 	}
   
-  /* Select places with coordinates within $radius miles/kilometers of a point */
+	/* Select places with coordinates within $radius miles/kilometers of a point */
 	function select_geo($table, $latitude, $longitude, $radius = 0, $results = 0, $miles = true, $additional_where = false) {
 		$coord_cols = $this->geo_detect_coord_cols($table);
 		
