@@ -143,7 +143,7 @@ Class Database {
 		$q = "SELECT *, (".($miles ? "3959" : "6371")." * acos(cos(radians(".$latitude.")) * cos(radians(".$this->lat_col.")) * cos(radians(".$this->lon_col.") - radians(".$longitude.")) + sin(radians(".$latitude.")) * sin(radians(".$this->lat_col.")))) AS distance FROM `".$table."`";
     
 		if ($radius > 0) { $q .= " HAVING distance < ".$radius; }
-    if ($additional_where !== false) { $q.= "WHERE $additional_where"; }
+        if ($additional_where !== false) { $q.= "WHERE $additional_where"; }
 		$q .= " ORDER BY distance";
 		if ($results > 0) { $q .= " LIMIT $results;"; }
 		
