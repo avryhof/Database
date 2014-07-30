@@ -348,7 +348,6 @@ class Database {
     }
 }
 
-
 class sqlite_result {
  	var $result 	= NULL;
  	var $conn		= NULL;
