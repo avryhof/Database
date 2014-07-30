@@ -1,6 +1,4 @@
 <?php
-	// error_reporting(E_ALL);
-	
 /* ************
     A simple, generic Database Abstraction Layer
  
@@ -25,7 +23,9 @@
 		
 		$db = new Database(host, username, password, database);
 		
-*/	
+*/
+
+// error_reporting(E_ALL);		
 
 class Database {
  	var $db, $last_query, $conn, $affected_rows, $connect_error, $last, $errno, $error, $exists, $parent_class, $sqlite_version;
