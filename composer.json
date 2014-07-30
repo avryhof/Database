@@ -1,0 +1,21 @@
+{
+    "name": "avryhof/Database",
+    "description": "Database Abstraction Layer",
+    "type": "library",
+    "keywords": ["database","mysql","sqlite"],
+    "homepage": "https://github.com/avryhof/Database",
+    "license": "MIT",
+    "authors": [
+        {
+            "email": "amos@vryhofresearch.com",
+            "name": "Amos Vryhof"
+        }
+    ],
+    "require": {
+        "php": ">=5.0.0"
+    },
+    "autoload": {
+        "classmap": ["Database/", "database.php"]
+    },
+    "include-path": [""]
+}
