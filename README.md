@@ -42,7 +42,7 @@ Example
     }
   }
   
-  $db->update("users", array("name" => "Bob"),"name = "User");
+  $db->update("users", array("name" => "Bob"),"name = 'User'");
   
   $db->delete("users", "name = 'Bob'");
 ```
