@@ -15,8 +15,7 @@
         "php": ">=5.0.0"
     },
     "autoload": {
-        "classmap": ["database.php"],
-		    "psr-0": { "Database": "" }
+		    "classmap" : ["database.php"]
     },
     "include-path": [""]
 }
