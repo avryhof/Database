@@ -16,9 +16,7 @@
     },
     "autoload": {
         "classmap": ["database.php"],
-		    "psr-0": {
-            "Detection": "namespaced/"
-        }
+		    "psr-0": { "Database": "" }
     },
     "include-path": [""]
 }
