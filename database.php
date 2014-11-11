@@ -146,7 +146,7 @@ class Database {
 			$is_where = true;
 			$select_wheres = array();
 			foreach ($where as $key => $value) {
-				$select_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'$value'");
+				$select_wheres[] = $this->encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'$value'");
 			}
 			$select_where = implode(" ". $where_operator ." ",$select_wheres);
 		} else {
@@ -156,7 +156,7 @@ class Database {
 			$is_order = true;
 			$orders = array();
 			foreach($order as $ok => $ov) {
-				$orders[] = encapsulate_column_name($ok)." ".$ov;
+				$orders[] = $this->encapsulate_column_name($ok)." ".$ov;
 			}
 			$select_order = implode(",",$orders);
 		} else {
@@ -203,7 +203,7 @@ class Database {
 		if (is_array($where) && count($where) > 0) {
 			$update_wheres = array();
 			foreach ($where as $key => $value) {
-				$update_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'" .$this->escape($value)."'");
+				$update_wheres[] = $this->encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'" .$this->escape($value)."'");
 			}
 			$where = implode(" AND ",$update_wheres);
 		}
@@ -225,7 +225,7 @@ class Database {
 		if (is_array($where) && count($where) > 0) {
 			$delete_wheres = array();
 			foreach ($where as $key => $value) {
-				$delete_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'".$this->escape($value)."'");
+				$delete_wheres[] = $this->encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'".$this->escape($value)."'");
 			}
 			$where = implode(" AND ",$delete_wheres);
 		}		
