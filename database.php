@@ -130,16 +130,46 @@ class Database {
  	 	}
  	}
 	
-	function select($table, $item_id, $assoc = false) {
-		$q = "SELECT * FROM $table WHERE id=$item_id";
-		return ($assoc ? $this->query($q)->fetch_assoc() : $this->query($q));
+	function select($columns = array(), $table, $where = array(), $where_operator = "AND", $order = array(), $limit = false) {
+		if (count($columns) == 0) {
+			$select_columns = "*";
+		} else {
+			foreach($columns as $column_key => $column_name) {
+				$columns[$column_key] = $this->encapsulate_column_name($column_name);
+			}
+			$select_columns = implode(',',$columns);
+		}
+		/* TODO: Figure out how to mix AND/OR/LIKE Operators */
+		if (count($where) > 0) {
+			$is_where = true;
+			$select_wheres = array();
+			foreach ($where as $key => $value) {
+				$select_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'$value'");
+			}
+			$select_where = implode(" ". $where_operator ." ",$select_wheres);
+		} else {
+			$is_where = false;
+		}
+		if (count($order) > 0) {
+			$is_order = true;
+			$orders = array();
+			foreach($order as $ok => $ov) {
+				$orders[] = encapsulate_column_name($ok)." ".$ov;
+			}
+			$select_order = implode(",",$orders);
+		} else {
+			$is_order = false;
+		}
+
+		$q = "SELECT $select_columns FROM ".$this->encapsulate_column_name($table).($is_where ? " WHERE $select_where" : "").($is_order ? " ORDER BY $select_order" : "").($limit !== false ? " LIMIT $limit" : "");
+		return $this->query($q);
 	}
   
 	/* Select places with coordinates within $radius miles/kilometers of a point */
 	function select_geo($table, $latitude, $longitude, $radius = 0, $results = 0, $miles = true, $additional_where = false) {
 		$coord_cols = $this->geo_detect_coord_cols($table);
 		
-		$q = "SELECT *, (".($miles ? "3959" : "6371")." * acos(cos(radians(".$latitude.")) * cos(radians(".$this->lat_col.")) * cos(radians(".$this->lon_col.") - radians(".$longitude.")) + sin(radians(".$latitude.")) * sin(radians(".$this->lat_col.")))) AS distance FROM `".$table."`";
+		$q = "SELECT *, (".($miles ? "3959" : "6371")." * acos(cos(radians(".$latitude.")) * cos(radians(".$this->lat_col.")) * cos(radians(".$this->lon_col.") - radians(".$longitude.")) + sin(radians(".$latitude.")) * sin(radians(".$this->lat_col.")))) AS distance FROM ".$this->encapsulate_column_name($table);
     
 		if ($radius > 0) { $q .= " HAVING distance < ".$radius; }
 		if ($additional_where !== false) { $q.= "WHERE $additional_where"; }
@@ -168,6 +198,13 @@ class Database {
 	}
 	
 	function update($table, $data, $where) {
+		if (is_array($where) && count($where) > 0) {
+			$update_wheres = array();
+			foreach ($where as $key => $value) {
+				$update_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'$value'");
+			}
+			$where = implode(" AND ",$update_wheres);
+		}
 		$q="UPDATE ".$table." SET ";
 		foreach($data as $key=>$val) {
 			if(strtolower($val)=='null') {
@@ -183,12 +220,19 @@ class Database {
 	}
 	
 	function delete($table, $where) {
+		if (is_array($where) && count($where) > 0) {
+			$delete_wheres = array();
+			foreach ($where as $key => $value) {
+				$delete_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'$value'");
+			}
+			$where = implode(" AND ",$delete_wheres);
+		}		
 		$q="DELETE FROM ".$table." WHERE $where;";
 		return $this->query($q);
 	}
 	
 	function table2array($table) {
-		$items = $this->query("SELECT * FROM $table");
+		$items = $this->select("*",$table);
 		$retn = array();
 		while($item = $items->fetch_assoc()) {
 			$retn["$item[key]"] = $item['val'];
@@ -209,7 +253,7 @@ class Database {
 			}
 		}
 		$where = implode(" AND ", $pairs);
-		$records = $this->query("SELECT * FROM $table WHERE $where");
+		$records = $this->select("*",$table,$data);
 		if ($records->num_rows > 0) {
 			return $records;
 		} else {
@@ -287,7 +331,7 @@ class Database {
 	}
   
   function geo_detect_coord_cols($table) {
-		$res = $this->query("SELECT * FROM `$table` LIMIT 1")->fetch_assoc();
+		$res = $this->select("*", $table, array(), "", array(), 1)->fetch_assoc();
 		$lat_keys = array("lat","latitude");
 		$lon_keys = array("lon","lng","longitude");
 		foreach($res as $res_key => $res_val) {
