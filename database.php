@@ -131,7 +131,9 @@ class Database {
  	}
 	
 	function select($columns = array(), $table, $where = array(), $where_operator = "AND", $order = array(), $limit = false) {
-		if (count($columns) == 0) {
+		if (!is_array($columns)) {
+			$select_columns = $columns;
+		} elseif (count($columns) == 0) {
 			$select_columns = "*";
 		} else {
 			foreach($columns as $column_key => $column_name) {
@@ -201,7 +203,7 @@ class Database {
 		if (is_array($where) && count($where) > 0) {
 			$update_wheres = array();
 			foreach ($where as $key => $value) {
-				$update_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'$value'");
+				$update_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'" .$this->escape($value)."'");
 			}
 			$where = implode(" AND ",$update_wheres);
 		}
@@ -223,7 +225,7 @@ class Database {
 		if (is_array($where) && count($where) > 0) {
 			$delete_wheres = array();
 			foreach ($where as $key => $value) {
-				$delete_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'$value'");
+				$delete_wheres[] = encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'".$this->escape($value)."'");
 			}
 			$where = implode(" AND ",$delete_wheres);
 		}		
