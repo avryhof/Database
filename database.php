@@ -1,37 +1,46 @@
 <?php
 /* ************
     A simple, generic Database Abstraction Layer
- 
+
 	Supports some commonly used PHP Database types: SQLITE, MYSQL, MYSQLi
-	
+
 	Fully object-oriented - results are sqlite_result, mysql_result or sqli_result
 		- Sqlite and MySQL Result types are very minimal.
-		
+
 	Connecting:
 		$db = new Database($dsn);
-		
+
 		$dsn = array( 'phptype'  => 'mysqli', 'username' => 'username', 'password' => 'password', 'hostspec' => 'localhost', 'database' => 'thedb' );
 		$dsn = "sqlite:////home/cadried/public_html/admin/tables.db?mode=0666";
 		$dsn = "mysql://user:password@host/database";
 		$dsn = "mysqli://user:password@host/database";
-		
+
 		or
-		
+
 		$db = new Database(phptype, host, username, password, database);
-		
+
 		or (for MySQLi assumed)
-		
+
 		$db = new Database(host, username, password, database);
-		
+
+    or
+
+    define('DB_HOST', 'host');
+    define('DB_USER', 'user');
+    define('DB_NAME', 'database');
+    define('DB_PASS', 'password');
+
+    $db = new Database();
+
 */
 
-// error_reporting(E_ALL);		
+// error_reporting(E_ALL);
 
 class Database {
  	var $db, $last_query, $conn, $affected_rows, $connect_error, $last, $errno, $error, $exists, $parent_class, $sqlite_version;
  	var $lat_col = "latitude";
 	var $lon_col = "longitude";
- 	
+
  	function __construct() {
  	 	switch(func_num_args()) {
  	 	 	case 5:
@@ -40,17 +49,21 @@ class Database {
  	 	 	case 4:
  	 	 		$dsn = array("phptype"=>"mysqli","username"=>func_get_arg(1),"password"=>func_get_arg(2),"hostspec"=>func_get_arg(0),"database"=>func_get_arg(3));
  	 	 		break;
+      case 0:
+        if (defined('DB_HOST') && defined('DB_USER') && defined('DB_PASS') && defined('DB_NAME')) {
+          $dsn = array("phptype"=>"mysqli","username"=>DB_USER,"password"=>DB_PASS,"hostspec"=>DB_HOST,"database"=>DB_NAME);
+        }
 			default:
 			   $dsn = func_get_arg(0);
  	 	}
-		
+
  	 	$this->db = $this->parseDSN($dsn);
-		 	 	
+
  	 	switch($this->db['phptype']) {
  	 		case "sqlite":
 				$this->exists = file_exists($this->db['database']);
 				$this->sqlite_version = (class_exists("SQLite3") ? 3 : 2);
-				
+
 				if ($this->sqlite_version == 3) {
 					$this->conn = new SQLite3($this->db['database']);
 				} else {
@@ -67,8 +80,8 @@ class Database {
  	 			break;
  	 	}
  	 	$this->check_errors();
-	} 	
-	
+	}
+
  	function query($query) {
  	 	$this->last_query = $query;
  	 	switch($this->db['phptype']) {
@@ -103,15 +116,15 @@ class Database {
  	 			break;
  	 	}
  	}
-	
- 	function escape($string) { 
+
+ 	function escape($string) {
  	 	if (is_numeric($string)) {
  	 	 	return $string;
  	 	} else {
  	 	 	return $this->real_escape_string($string);
  	 	}
  	}
- 	
+
  	function real_escape_string($string) {
  	 	switch($this->db['phptype']) {
  	 		case "sqlite":
@@ -129,7 +142,7 @@ class Database {
  	 			break;
  	 	}
  	}
-	
+
 	function select($columns = array(), $table, $where = array(), $where_operator = "AND", $order = array(), $limit = false) {
 		if (!is_array($columns)) {
 			$select_columns = $columns;
@@ -166,21 +179,21 @@ class Database {
 		$q = "SELECT $select_columns FROM ".$this->encapsulate_column_name($table).($is_where ? " WHERE $select_where" : "").($is_order ? " ORDER BY $select_order" : "").($limit !== false ? " LIMIT $limit" : "");
 		return $this->query($q);
 	}
-  
+
 	/* Select places with coordinates within $radius miles/kilometers of a point */
 	function select_geo($table, $latitude, $longitude, $radius = 0, $results = 0, $miles = true, $additional_where = false) {
 		$coord_cols = $this->geo_detect_coord_cols($table);
-		
+
 		$q = "SELECT *, (".($miles ? "3959" : "6371")." * acos(cos(radians(".$latitude.")) * cos(radians(".$this->lat_col.")) * cos(radians(".$this->lon_col.") - radians(".$longitude.")) + sin(radians(".$latitude.")) * sin(radians(".$this->lat_col.")))) AS distance FROM ".$this->encapsulate_column_name($table);
-    
+
 		if ($radius > 0) { $q .= " HAVING distance < ".$radius; }
 		if ($additional_where !== false) { $q.= "WHERE $additional_where"; }
 		$q .= " ORDER BY distance";
 		if ($results > 0) { $q .= " LIMIT $results;"; }
-		
+
 		return $this->query($q);
 	}
-   	
+
  	/* Query Commands ... INSERT, UPDATE, DELETE */
 	function insert($table, $data) {
 		$q = "INSERT INTO $table ";
@@ -198,7 +211,7 @@ class Database {
 		$q .= "(". rtrim($n, ', ') .") VALUES (". rtrim($v, ', ') .");";
 		return $this->query($q);
 	}
-	
+
 	function update($table, $data, $where) {
 		if (is_array($where) && count($where) > 0) {
 			$update_wheres = array();
@@ -220,7 +233,7 @@ class Database {
 		$q = rtrim($q, ', ') . ' WHERE '.$where.';';
 		return $this->query($q);
 	}
-	
+
 	function delete($table, $where) {
 		if (is_array($where) && count($where) > 0) {
 			$delete_wheres = array();
@@ -228,11 +241,11 @@ class Database {
 				$delete_wheres[] = $this->encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'".$this->escape($value)."'");
 			}
 			$where = implode(" AND ",$delete_wheres);
-		}		
+		}
 		$q="DELETE FROM ".$table." WHERE $where;";
 		return $this->query($q);
 	}
-	
+
 	function table2array($table) {
 		$items = $this->select("*",$table);
 		$retn = array();
@@ -241,7 +254,7 @@ class Database {
 		}
 		return $retn;
 	}
-	
+
 	/* **
 	 * Check to see if $data exists in $table, and return it if it does, or false if not.
 	 */
@@ -262,7 +275,7 @@ class Database {
 			return false;
 		}
 	}
-	
+
 	function run($sql_file) {
 		$sql_file_contents = file_get_contents($sql_file);
 		$rawsql = explode("\n",$sql_file_contents);
@@ -276,8 +289,8 @@ class Database {
 					$q = $clean_query;
 					$this->last_query = $q;
 					$result = $this->query($q);
-					if (!$result) { 
-						die("<pre>" . print_r($this->error_details(),true) . "</pre>"); 
+					if (!$result) {
+						die("<pre>" . print_r($this->error_details(),true) . "</pre>");
 					} else {
 						$q = "";
 						$clean_query = "";
@@ -285,8 +298,8 @@ class Database {
 				}
 			}
 		}
-	}	
-	
+	}
+
 	/* Error Handling */
  	private function check_errors() {
  	 	switch($this->db['phptype']) {
@@ -304,20 +317,20 @@ class Database {
  	 			$this->error = mysql_error($this->conn);
  	 			break;
  	 		case "mysqli":
-				if (mysqli_connect_error()) { 
-					die('Connect Error: ' . mysqli_connect_error()); 
+				if (mysqli_connect_error()) {
+					die('Connect Error: ' . mysqli_connect_error());
 				}
  	 			$this->errno = mysqli_errno($this->conn);
  	 			$this->error = mysqli_error($this->conn);
  	 			break;
  	 	}
- 	 
+
  	}
- 	
+
  	function error_details() {
  	 	return array("query" => $this->last_query, "errno" => $this->errno, "error" => $this->error);
  	}
-	
+
 	function encapsulate_column_name($column_name) {
 		switch($this->db['phptype']) {
  	 		case "sqlite":
@@ -329,9 +342,9 @@ class Database {
  	 		case "mysqli":
 				return "`".$column_name."`";
  	 			break;
- 	 	}		
+ 	 	}
 	}
-  
+
   function geo_detect_coord_cols($table) {
 		$res = $this->select("*", $table, array(), "", array(), 1)->fetch_assoc();
 		$lat_keys = array("lat","latitude");
@@ -341,9 +354,9 @@ class Database {
 			if (in_array($res_key,$lon_keys)) { $this->lon_col = $res_key; }
 		}
 		return array("lat_col"=>$this->lat_col,"lon_col"=>$this->lon_col);
-	} 	
-	
-	/* ** 
+	}
+
+	/* **
 	 * Basic DSN Parser.
 	 *
 	 * phptype://[username]@[host]:[password]/[database][arguments]
@@ -351,20 +364,20 @@ class Database {
 	 * array([dsn parameters])
 	 */
 	function parseDSN($dsn) {
-	 	if (is_array($dsn)) { 
-			return $dsn; 
+	 	if (is_array($dsn)) {
+			return $dsn;
 		} else {
 		 	$dsn_match = "|^(?P<phptype>.*?)://(?P<parameters>.*?)/(?P<db>.*?)$|i";
 		 	$parameter_match = "|^(?P<username>.*?):(?P<password>.*?)@(?P<hostspec>.*?)$|i";
 		 	$args_match = '|^(?P<database>.*?)\?(?P<args>.*?)$|';
-		 	
+
 		 	/* First, pick out the phptype, database, and gunk in the middle */
 			preg_match($dsn_match,$dsn,$matches['base']);
 			/* Next, parse the gunk in the middle into username, host, and password */
 			if (!empty($matches['base']['parameters'])) { preg_match($parameter_match,$matches['base']['parameters'],$matches['parameters']); }
 			/* Then, parse the database to see if any commandline parameters were passed */
 			if (substr_count($matches['base']['db'],"?") > 0) { preg_match($args_match,$matches['base']['db'],$matches['args']); }
-			
+
 			$retn = array();
 			$retn['phptype'] = $matches['base']['phptype'];
 			if (!empty($matches['base']['parameters']) && is_array($matches['parameters'])) {
@@ -381,7 +394,7 @@ class Database {
 			return $retn;
 		}
     }
-    
+
     /* Helper function to break dsn arguments into an array */
     function parseDSN_args($args) {
      	$retn = array();
@@ -399,27 +412,27 @@ class sqlite_result {
  	var $conn		= NULL;
  	var $num_rows	= 0;
  	var $field_count = 0;
- 	
+
 	function __construct($result, $conn) {
 	 	$this->result 		= $result;
 	 	$this->conn			= $conn;
 	 	$this->num_rows		= sqlite_num_rows($this->result);
 	 	$this->field_count 	= sqlite_num_fields($this->result);
 	}
-	
+
 	function data_seek($rownum) {
 	 	return sqlite_seek($this->result,$rownum);
 	}
-	
+
 	/* If you want these functions to be like the MySQLiResult Class, the flag should be SQLITE_NUM */
 	function fetch_all($result_type = SQLITE_BOTH) {
 	 	return sqlite_fetch_all($this->result, $result_type, true);
 	}
-	
+
 	function fetch_array($result_type = SQLITE_BOTH) {
 	 	return sqlite_fetch_array($this->result, $result_type, true);
 	}
-	
+
 	function fetch_assoc() {
 	 	return sqlite_fetch_array($this->result, SQLITE_ASSOC);
 	}
@@ -430,14 +443,14 @@ class sqlite3_result {
  	var $conn		= NULL;
  	var $num_rows	= 0;
  	var $field_count = 0;
- 	
+
 	function __construct($result, $conn) {
 	 	$this->result 		= $result;
 	 	$this->conn			= $conn;
 	 	$this->num_rows		= $this->count_rows();
 	 	$this->field_count 	= $this->result->numColumns();
 	}
-	
+
 	function data_seek($rownum) {
 		if ($rownum == 0) {
 			return $this->result->reset();
@@ -445,7 +458,7 @@ class sqlite3_result {
 			return false;
 		}
 	}
-	
+
 	function count_rows() {
 		$retn = 0;
 		while($item = $this->fetch_array()) {
@@ -453,7 +466,7 @@ class sqlite3_result {
 		}
 		return $retn;
 	}
-	
+
 	/* If you want these functions to be like the MySQLiResult Class, the flag should be SQLITE_NUM */
 	function fetch_all($result_type = SQLITE_BOTH) {
 		$retn = array();
@@ -462,11 +475,11 @@ class sqlite3_result {
 		}
 		return $retn;
 	}
-	
+
 	function fetch_array($result_type = SQLITE3_BOTH) {
 		return $this->result->fetchArray($result_type);
 	}
-	
+
 	function fetch_assoc() {
 		return $this->fetch_array(SQLITE3_ASSOC);
 	}
@@ -477,26 +490,26 @@ class mysql_result {
  	var $conn		= NULL;
  	var $num_rows	= 0;
  	var $field_count = 0;
- 	
+
 	function __construct($result, $conn) {
 	 	$this->result 		= $result;
 	 	$this->conn			= $conn;
 	 	$this->num_rows		= mysql_num_rows($this->result);
 	}
-	
+
 	function data_seek($rownum) {
 	 	return mysql_data_seek($this->result,$rownum);
 	}
-	
+
 	/* If you want these functions to be like the MySQLiResult Class, the flag should be MYSQL_NUM */
 	function fetch_all($result_type = MYSQL_BOTH) {
 	 	return mysql_fetch_array($this->result, $result_type);
 	}
-	
+
 	function fetch_array($result_type = MYSQL_BOTH) {
 	 	return mysql_fetch_array($this->result, $result_type);
 	}
-	
+
 	function fetch_assoc() {
 	 	return mysql_fetch_assoc($this->result);
 	}
