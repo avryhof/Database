@@ -56,7 +56,7 @@
 			if ($db->errno > 0) {
 				echo "<pre>ERROR: " . $db->error . "\n\nQUERY:\n\n" . $db->last_query . "\n\nSQL:\n\n" . $sql . "</pre>";
 			} else {
-				header("Location:".$_SERVER['PHP_SELF']);
+				header("Location:".$_SERVER['PHP_SELF'].'?database='.$_POST['database'].'&table='.$_POST['table']);
 			}
 		}
 	}
@@ -189,7 +189,7 @@
                     	<div class="panel-body">
                             <div class="btn-toolbar" role="toolbar">
                                 <div class="btn-group" role="group">
-                                    <a href="adminer/?server=<?= DB_HOST; ?>&username=<?= DB_USER; ?>&db=<?= $database; ?>&table=<?= $table; ?>" class="btn btn-info" target="_blank">Alter Table</a>
+                                    <a href="<?= $_SERVER['PHP_SELF']; ?>?database=<?= $database; ?>&table=<?= $table; ?>&show=sql#alter" class="btn btn-info">Alter Table</a>
                                 </div>
                             </div>
                         </div>
@@ -282,6 +282,8 @@
             
             <form action="<?= $scriptname; ?>" method="post" class="form" enctype="multipart/form-data">
             <input type="hidden" name="action" value="execute_sql">
+            <input type="hidden" name="database" value="<?= $database; ?>">
+            <input type="hidden" name="table" value="<?= $table; ?>">
             <div class="form-group">
             	<label for="sql">SQL Query</label>
             	<textarea name="sql" id="sql" class="form-control" style="width:100%"></textarea>
