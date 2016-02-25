@@ -10,18 +10,18 @@
 	Connecting:
 		$db = new Database($dsn);
 
-		$dsn = array( 'phptype'  => 'mysqli', 'username' => 'username', 'password' => 'password', 'hostspec' => 'localhost', 'database' => 'thedb', 'prefix' => 'prefix' );
-		$dsn = "sqlite:////home/cadried/public_html/admin/tables.db?mode=0666&prefix=prefix";
-		$dsn = "mysql://user:password@host/database?prefix=prefix";
-		$dsn = "mysqli://user:password@host/database?prefix=prefix";
+		$dsn = array( 'phptype'  => 'mysqli', 'username' => 'username', 'password' => 'password', 'hostspec' => 'localhost', 'database' => 'thedb' );
+		$dsn = "sqlite:////home/cadried/public_html/admin/tables.db?mode=0666";
+		$dsn = "mysql://user:password@host/database";
+		$dsn = "mysqli://user:password@host/database";
 
 		or
 
-		$db = new Database(phptype, host, username, password, database, prefix);
+		$db = new Database(phptype, host, username, password, database);
 
 		or (for MySQLi assumed)
 
-		$db = new Database(host, username, password, database, prefix);
+		$db = new Database(host, username, password, database);
 
     or
 
@@ -29,7 +29,6 @@
     define('DB_USER', 'user');
     define('DB_NAME', 'database');
     define('DB_PASS', 'password');
-    define('DB_PREFIX', 'prefix');
 
     $db = new Database();
 
@@ -38,32 +37,27 @@
 // error_reporting(E_ALL);
 
 class Database {
- 	var $db, $last_query, $conn, $affected_rows, $connect_error, $last, $errno, $error, $exists, $parent_class, $sqlite_version, $prefix;
+ 	var $db, $last_query, $conn, $affected_rows, $connect_error, $last, $errno, $error, $exists, $parent_class, $sqlite_version;
  	var $lat_col = "latitude";
 	var $lon_col = "longitude";
 
  	function __construct() {
  	 	switch(func_num_args()) {
  	 	 	case 5:
- 	 	 		$dsn = array("phptype"=>func_get_arg(0),"username"=>func_get_arg(2),"password"=>func_get_arg(3),"hostspec"=>func_get_arg(1),"database"=>func_get_arg(4),"prefix"=>func_get_arg(5));
+ 	 	 		$dsn = array("phptype"=>func_get_arg(0),"username"=>func_get_arg(2),"password"=>func_get_arg(3),"hostspec"=>func_get_arg(1),"database"=>func_get_arg(4));
  	 	 		break;
  	 	 	case 4:
- 	 	 		$dsn = array("phptype"=>"mysqli","username"=>func_get_arg(1),"password"=>func_get_arg(2),"hostspec"=>func_get_arg(0),"database"=>func_get_arg(3),"prefix"=>func_get_arg(4));
+ 	 	 		$dsn = array("phptype"=>"mysqli","username"=>func_get_arg(1),"password"=>func_get_arg(2),"hostspec"=>func_get_arg(0),"database"=>func_get_arg(3));
  	 	 		break;
       case 0:
         if (defined('DB_HOST') && defined('DB_USER') && defined('DB_PASS') && defined('DB_NAME')) {
-            if (defined('DB_PREFIX')) {
-               $dsn = array("phptype"=>"mysqli","username"=>DB_USER,"password"=>DB_PASS,"hostspec"=>DB_HOST,"database"=>DB_NAME,"prefix"=>DB_PREFIX);  
-            } else {
-                $dsn = array("phptype"=>"mysqli","username"=>DB_USER,"password"=>DB_PASS,"hostspec"=>DB_HOST,"database"=>DB_NAME);
-            }
+          $dsn = array("phptype"=>"mysqli","username"=>DB_USER,"password"=>DB_PASS,"hostspec"=>DB_HOST,"database"=>DB_NAME);
         }
 			default:
 			   $dsn = func_get_arg(0);
  	 	}
 
  	 	$this->db = $this->parseDSN($dsn);
-        $this->prefix = $this->db['args']['prefix'];
 
  	 	switch($this->db['phptype']) {
  	 		case "sqlite":
@@ -89,13 +83,6 @@ class Database {
 	}
 
  	function query($query) {
-        /* Need to figure out how to make this support prefixes ... this might work */
-		if (!empty($this->prefix)) {
-            if (!(substr_count($query,$this->prefix) > 0)) {
-                $query_parts = $this->parse_query($query);
-				$query = str_replace($query_parts['table'], $this->prefix."_".$query_parts['table'],$query,1);
-            }
-        }
  	 	$this->last_query = $query;
  	 	switch($this->db['phptype']) {
  	 		case "sqlite":
@@ -157,9 +144,6 @@ class Database {
  	}
 
 	function select($columns = array(), $table, $where = array(), $where_operator = "AND", $order = array(), $limit = false) {
-		if (!empty($this->prefix) && !(substr_count($table,$this->prefix) > 0)) {
-			$table = $this->prefix."_".$table;
-        }
 		if (!is_array($columns)) {
 			$select_columns = $columns;
 		} elseif (count($columns) == 0) {
@@ -198,9 +182,6 @@ class Database {
 
 	/* Select places with coordinates within $radius miles/kilometers of a point */
 	function select_geo($table, $latitude, $longitude, $radius = 0, $results = 0, $miles = true, $additional_where = false) {
-		if (!empty($this->prefix) && !(substr_count($table,$this->prefix) > 0)) {
-			$table = $this->prefix."_".$table;
-        }
 		$coord_cols = $this->geo_detect_coord_cols($table);
 
 		$q = "SELECT *, (".($miles ? "3959" : "6371")." * acos(cos(radians(".$latitude.")) * cos(radians(".$this->lat_col.")) * cos(radians(".$this->lon_col.") - radians(".$longitude.")) + sin(radians(".$latitude.")) * sin(radians(".$this->lat_col.")))) AS distance FROM ".$this->encapsulate_column_name($table);
@@ -215,9 +196,6 @@ class Database {
 
  	/* Query Commands ... INSERT, UPDATE, DELETE */
 	function insert($table, $data) {
-		if (!empty($this->prefix) && !(substr_count($table,$this->prefix) > 0)) {
-			$table = $this->prefix."_".$table;
-        }
 		$q = "INSERT INTO $table ";
 		$v=''; $n='';
 		foreach($data as $key=>$val) {
@@ -235,9 +213,6 @@ class Database {
 	}
 
 	function update($table, $data, $where) {
-		if (!empty($this->prefix) && !(substr_count($table,$this->prefix) > 0)) {
-			$table = $this->prefix."_".$table;
-        }
 		if (is_array($where) && count($where) > 0) {
 			$update_wheres = array();
 			foreach ($where as $key => $value) {
@@ -260,9 +235,6 @@ class Database {
 	}
 
 	function delete($table, $where) {
-		if (!empty($this->prefix) && !(substr_count($table,$this->prefix) > 0)) {
-			$table = $this->prefix."_".$table;
-        }
 		if (is_array($where) && count($where) > 0) {
 			$delete_wheres = array();
 			foreach ($where as $key => $value) {
@@ -275,9 +247,6 @@ class Database {
 	}
 
 	function table2array($table) {
-		if (!empty($this->prefix) && !(substr_count($table,$this->prefix) > 0)) {
-			$table = $this->prefix."_".$table;
-        }
 		$items = $this->select("*",$table);
 		$retn = array();
 		while($item = $items->fetch_assoc()) {
@@ -290,9 +259,6 @@ class Database {
 	 * Check to see if $data exists in $table, and return it if it does, or false if not.
 	 */
 	function record_exists($table, $data) {
-		if (!empty($this->prefix) && !(substr_count($table,$this->prefix) > 0)) {
-			$table = $this->prefix."_".$table;
-        }
 		$pairs = array();
 		foreach($data as $key => $value) {
 			if (!is_numeric($value)) {
@@ -380,9 +346,6 @@ class Database {
 	}
 
   function geo_detect_coord_cols($table) {
-	  	if (!empty($this->prefix) && !(substr_count($table,$this->prefix) > 0)) {
-			$table = $this->prefix."_".$table;
-        }
 		$res = $this->select("*", $table, array(), "", array(), 1)->fetch_assoc();
 		$lat_keys = array("lat","latitude");
 		$lon_keys = array("lon","lng","longitude");
@@ -392,15 +355,6 @@ class Database {
 		}
 		return array("lat_col"=>$this->lat_col,"lon_col"=>$this->lon_col);
 	}
-    
-	/* The most basic of SQL Query parsers */            
-    function parse_query($query) {
-		$operations = array('SELECT','INSERT','UPDATE','DELETE','REPLACE','RENAME','SHOW','SET','DROP','CREATE INDEX','CREATE TABLE','EXPLAIN','DESCRIBE');
-
-		$query_ex = '/(?P<operation>'.implode("|",$operations).')\s*(?P<columns>.?)\s*(FROM|INTO)\s*(?P<table>`?.*?`?)\s*(WHERE)?\s*?(?P<where>.*?)\s*?(ORDER BY)?\s*?(?P<order>.*?)?\s*?(LIMIT)?(?P<limit>.*?)?$/i';
-		preg_match($query_ex, $query, $retn);
-		return $retn;	
-    }
 
 	/* **
 	 * Basic DSN Parser.
@@ -414,7 +368,7 @@ class Database {
 			return $dsn;
 		} else {
 		 	$dsn_match = "|^(?P<phptype>.*?)://(?P<parameters>.*?)/(?P<db>.*?)$|i";
-		 	$parameter_match = "|^(?P<username>.*?):(?P<password>.*?)@(?P<host spec>.*?)$|i";
+		 	$parameter_match = "|^(?P<username>.*?):(?P<password>.*?)@(?P<hostspec>.*?)$|i";
 		 	$args_match = '|^(?P<database>.*?)\?(?P<args>.*?)$|';
 
 		 	/* First, pick out the phptype, database, and gunk in the middle */
