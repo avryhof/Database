@@ -281,7 +281,7 @@ class Database
 
             $this->affected_rows = $this->statement->rowCount();
 
-            
+
 
         } catch(PDOException $e) {
             $this->errno = $e->getCode();
