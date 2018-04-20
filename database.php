@@ -36,482 +36,585 @@
 
 // error_reporting(E_ALL);
 
-class Database {
- 	var $db, $last_query, $conn, $affected_rows, $connect_error, $last, $errno, $error, $exists, $parent_class, $sqlite_version;
- 	var $lat_col = "latitude";
-	var $lon_col = "longitude";
+class Database
+{
+    var $db;
+    var $statement;
+    var $last_query;
+    var $affected_rows;
+    var $last;
+    var $errno;
+    var $error;
 
- 	function __construct() {
- 	 	switch(func_num_args()) {
- 	 	 	case 5:
- 	 	 		$dsn = array("phptype"=>func_get_arg(0),"username"=>func_get_arg(2),"password"=>func_get_arg(3),"hostspec"=>func_get_arg(1),"database"=>func_get_arg(4));
- 	 	 		break;
- 	 	 	case 4:
- 	 	 		$dsn = array("phptype"=>"mysqli","username"=>func_get_arg(1),"password"=>func_get_arg(2),"hostspec"=>func_get_arg(0),"database"=>func_get_arg(3));
- 	 	 		break;
-      case 0:
-        if (defined('DB_HOST') && defined('DB_USER') && defined('DB_PASS') && defined('DB_NAME')) {
-          $dsn = array("phptype"=>"mysqli","username"=>DB_USER,"password"=>DB_PASS,"hostspec"=>DB_HOST,"database"=>DB_NAME);
+    var $lat_col = "latitude";
+    var $lon_col = "longitude";
+
+    function __construct($connect_string=false, $username=false, $password=false, $pdo_opts=false)
+    {
+
+        if (!$connect_string) {
+            if (defined('DB_TYPE') && defined('DB_HOST') && defined('DB_NAME')) {
+                $connect_string = sprintf('%s:host=%s;dbname=%s', DB_TYPE, DB_HOST, DB_NAME);
+            }
         }
-			default:
-			   $dsn = func_get_arg(0);
- 	 	}
 
- 	 	$this->db = $this->parseDSN($dsn);
+        if (!$username && defined('DB_USER')) {
+            $username = DB_USER;
+        }
 
- 	 	switch($this->db['phptype']) {
- 	 		case "sqlite":
-				$this->exists = file_exists($this->db['database']);
-				$this->sqlite_version = (class_exists("SQLite3") ? 3 : 2);
+        if (!$password && defined('DB_PASS')) {
+            $password = DB_PASS;
+        }
 
-				if ($this->sqlite_version == 3) {
-					$this->conn = new SQLite3($this->db['database']);
-				} else {
-					$this->conn = sqlite_open($this->db['database'],(!empty($this->db['args']['type']) ? $this->db['args']['type'] : 0666), $this->connect_error);
- 	 				if (!empty($this->connect_error)) { die("<pre>" . $this->connect_error . "</pre>"); }
-				}
- 	 			break;
- 	 		case "mysql":
- 	 			$this->conn = mysql_connect($this->db['hostspec'],$this->db['username'],$this->db['password']);
- 	 			if (!$this->conn) { $this->connect_error = mysql_error($this->conn); } else { mysql_select_db($this->db['database'],$this->conn); }
- 	 			break;
- 	 		case "mysqli":
- 	 			$this->conn = mysqli_connect($this->db['hostspec'],$this->db['username'],$this->db['password'],$this->db['database']);
- 	 			break;
- 	 	}
- 	 	$this->check_errors();
-	}
+        if (!$pdo_opts) {
+            $pdo_opts = array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION);
+        } else {
+            $pdo_opts = array_merge(array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION), $pdo_opts);
+        }
 
- 	function query($query) {
- 	 	$this->last_query = $query;
- 	 	switch($this->db['phptype']) {
- 	 		case "sqlite":
-				if ($this->sqlite_version == 3) {
-					$result = $this->conn->query($query);
-					$this->check_errors();
-					$this->last = $this->conn->lastInsertRowID();
-					return new sqlite3_result($result, $this->conn);
-				} else {
- 	 				$result = sqlite_query($this->conn, $query, $error);
- 	 				if (!$result) { die("<pre>$query \n $error</pre>"); }
- 	 				$this->affected_rows = sqlite_changes($this->conn);
- 	 				$this->check_errors();
- 	 				$this->last = sqlite_last_insert_rowid($this->conn);
- 	 				return new sqlite_result($result, $this->conn);
-				}
- 	 			break;
- 	 		case "mysql":
- 	 			$result = mysql_query($query,$this->conn);
- 	 			$this->affected_rows = mysql_affected_rows($this->conn);
- 	 			$this->check_errors();
- 	 			$this->last = mysql_insert_id($this->conn);
- 	 			return new mysql_result($result, $this->conn);
- 	 			break;
- 	 		case "mysqli":
- 	 			$result = mysqli_query($this->conn,$query);
- 	 			$this->affected_rows = mysqli_affected_rows($this->conn);
- 	 			$this->check_errors();
- 	 			$this->last = mysqli_insert_id($this->conn);
- 	 			return $result;
- 	 			break;
- 	 	}
- 	}
+        try {
+            $db = new PDO($connect_string, $username, $password, $pdo_opts);
+        } catch(PDOException $e) {
+            $this->errno = $e->getCode();
+            $this->error = $e->getMessage();
+        }
+    }
 
- 	function escape($string) {
- 	 	if (is_numeric($string)) {
- 	 	 	return $string;
- 	 	} else {
- 	 	 	return $this->real_escape_string($string);
- 	 	}
- 	}
+    /*
+     * Let's try to avoid using this... m'kay
+     */
+    function query($query)
+    {
+        $this->last_query = $query;
+        $result = $this->db->query($query);
+        $this->last = $this->db->lastInsertId();
 
- 	function real_escape_string($string) {
- 	 	switch($this->db['phptype']) {
- 	 		case "sqlite":
-				if ($this->sqlite_version == 3) {
-					return $this->conn->escapeString($string);
-				} else {
-					return sqlite_escape_string($string);
-				}
- 	 			break;
- 	 		case "mysql":
- 	 			return mysql_real_escape_string($string,$this->conn);
- 	 			break;
- 	 		case "mysqli":
- 	 			return mysqli_real_escape_string($this->conn,$string);
- 	 			break;
- 	 	}
- 	}
+        return $result;
+    }
 
-	function select($columns = array(), $table, $where = array(), $where_operator = "AND", $order = array(), $limit = false) {
-		if (!is_array($columns)) {
-			$select_columns = $columns;
-		} elseif (count($columns) == 0) {
-			$select_columns = "*";
-		} else {
-			foreach($columns as $column_key => $column_name) {
-				$columns[$column_key] = $this->encapsulate_column_name($column_name);
-			}
-			$select_columns = implode(',',$columns);
-		}
-		/* TODO: Figure out how to mix AND/OR/LIKE Operators */
-		if (count($where) > 0) {
-			$is_where = true;
-			$select_wheres = array();
-			foreach ($where as $key => $value) {
-				$select_wheres[] = $this->encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'$value'");
-			}
-			$select_where = implode(" ". $where_operator ." ",$select_wheres);
-		} else {
-			$is_where = false;
-		}
-		if (count($order) > 0) {
-			$is_order = true;
-			$orders = array();
-			foreach($order as $ok => $ov) {
-				$orders[] = $this->encapsulate_column_name($ok)." ".$ov;
-			}
-			$select_order = implode(",",$orders);
-		} else {
-			$is_order = false;
-		}
+    function escape($string)
+    {
+        return $this->real_escape_string($string);
+    }
 
-		$q = "SELECT $select_columns FROM ".$this->encapsulate_column_name($table).($is_where ? " WHERE $select_where" : "").($is_order ? " ORDER BY $select_order" : "").($limit !== false ? " LIMIT $limit" : "");
-		return $this->query($q);
-	}
+    function real_escape_string($string)
+    {
+        return $this->db->quote($string);
+    }
 
-	/* Select places with coordinates within $radius miles/kilometers of a point */
-	function select_geo($table, $latitude, $longitude, $radius = 0, $results = 0, $miles = true, $additional_where = false) {
-		$coord_cols = $this->geo_detect_coord_cols($table);
+    /*
+     * This needs some explanation....
+     * A WHERE array is a multidimensional array formatted like this
+     * array(
+     *  array('AND/OR/NOT', 'field_name', 'operator', 'variable),
+     *  array('AND/OR/NOT', 'field_name', 'operator', 'variable),
+     *  array('AND/OR/NOT', 'field_name', 'operator', 'variable)
+     * );
+     *
+     * TODO: Build normalizers for operators.
+     */
+    function paremtrize_where_array($where_array) {
+        $where_parts = array();
+        $where_record = array();
+        foreach ($where_array as $where_field) {
+            list($and_or_not, $field_name, $operator, $value) = $where_field;
+            $field_parameter = sprintf(':%s', $field_name);
+            $where_part = sprintf('%s %s %s %s', $and_or_not, $field_name, $operator, $field_parameter);
+            $where_parts[] = $where_part;
+            $where_record[$field_parameter] = $value;
+        }
+        return array(
+            'where_statement' => implode(' ', $where_parts),
+            'where_values' => $where_record
+        );
+    }
 
-		$q = "SELECT *, (".($miles ? "3959" : "6371")." * acos(cos(radians(".$latitude.")) * cos(radians(".$this->lat_col.")) * cos(radians(".$this->lon_col.") - radians(".$longitude.")) + sin(radians(".$latitude.")) * sin(radians(".$this->lat_col.")))) AS distance FROM ".$this->encapsulate_column_name($table);
+    function parametrize($db_record) {
+        $columns = array_keys($db_record);
+        $fields = array();
+        $insert_record = array();
+        $update_parts = array();
 
-		if ($radius > 0) { $q .= " HAVING distance < ".$radius; }
-		if ($additional_where !== false) { $q.= "WHERE $additional_where"; }
-		$q .= " ORDER BY distance";
-		if ($results > 0) { $q .= " LIMIT $results;"; }
+        foreach ($columns as $column) {
+            $field_key = sprintf(':%s', $column);
+            $fields[] = $field_key;
 
-		return $this->query($q);
-	}
+            $insert_record[$field_key] = $db_record[$column];
+            $update_parts[] = sprintf('%s = :%s', $column, $column);
+        }
+        $field_string = implode(',', $fields);
+        $update_string = implode(',', $update_parts);
 
- 	/* Query Commands ... INSERT, UPDATE, DELETE */
-	function insert($table, $data) {
-		$q = "INSERT INTO $table ";
-		$v=''; $n='';
-		foreach($data as $key=>$val) {
-			$n .=" ".$this->encapsulate_column_name($key).", ";
-			if(strtolower($val)=='null') {
-				$v.="NULL, ";
-			} elseif(strtolower($val)=='now()') {
-				$v.="NOW(), ";
-			} else {
-				$v.= "'".$this->escape($val)."', ";
-			}
-		}
-		$q .= "(". rtrim($n, ', ') .") VALUES (". rtrim($v, ', ') .");";
-		return $this->query($q);
-	}
+        return array(
+            'record_values' => $insert_record,
+            'update_record' => $update_string,
+            'field_string' => $field_string,
+            'fields' => $fields
+        );
+    }
 
-	function update($table, $data, $where) {
-		if (is_array($where) && count($where) > 0) {
-			$update_wheres = array();
-			foreach ($where as $key => $value) {
-				$update_wheres[] = $this->encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'" .$this->escape($value)."'");
-			}
-			$where = implode(" AND ",$update_wheres);
-		}
-		$q="UPDATE ".$table." SET ";
-		foreach($data as $key=>$val) {
-			if(strtolower($val)=='null') {
-				$q.= $this->encapsulate_column_name($key)." = NULL, ";
-			} elseif(strtolower($val)=='now()') {
-				$q.= $this->encapsulate_column_name($key)." = NOW(), ";
-			} else {
-				$q.= $this->encapsulate_column_name($key)."='".$this->escape($val)."', ";
-			}
-		}
-		$q = rtrim($q, ', ') . ' WHERE '.$where.';';
-		return $this->query($q);
-	}
+    function create($table, $db_record) {
+        $params = $this->parametrize($db_record);
 
-	function delete($table, $where) {
-		if (is_array($where) && count($where) > 0) {
-			$delete_wheres = array();
-			foreach ($where as $key => $value) {
-				$delete_wheres[] = $this->encapsulate_column_name($key). " = " . (is_numeric($value) ? $value : "'".$this->escape($value)."'");
-			}
-			$where = implode(" AND ",$delete_wheres);
-		}
-		$q="DELETE FROM ".$table." WHERE $where;";
-		return $this->query($q);
-	}
+        $field_string = $params['field_string'];
+        $parametrized_record = $params['record_values'];
 
-	function table2array($table) {
-		$items = $this->select("*",$table);
-		$retn = array();
-		while($item = $items->fetch_assoc()) {
-			$retn["$item[key]"] = $item['val'];
-		}
-		return $retn;
-	}
+        try {
+            $this->statement = $this->db->prepare(
+                sprintf('INSERT INTO %s VALUES(%s)',
+                    $table,
+                    $field_string
+                )
+            );
+            $this->statement->execute($parametrized_record);
 
-	/* **
-	 * Check to see if $data exists in $table, and return it if it does, or false if not.
-	 */
-	function record_exists($table, $data) {
-		$pairs = array();
-		foreach($data as $key => $value) {
-			if (!is_numeric($value)) {
-				$pairs[] = $this->encapsulate_column_name($key)." = '".$this->escape($value)."'";
-			} else {
-				$pairs[] = $this->encapsulate_column_name($key)." = $value";
-			}
-		}
-		$where = implode(" AND ", $pairs);
-		$records = $this->select("*",$table,$data);
-		if ($records->num_rows > 0) {
-			return $records;
-		} else {
-			return false;
-		}
-	}
+            $this->affected_rows = $this->statement->rowCount();
+            $this->last = $this->db->lastInsertId();
 
-	function run($sql_file) {
-		$sql_file_contents = file_get_contents($sql_file);
-		$rawsql = explode("\n",$sql_file_contents);
-		$q = "";
-		$clean_query = "";
-		foreach($rawsql as $sql_line) {
-			if(trim($sql_line) != "" && strpos($sql_line, "--") === false) {
-				$clean_query .= $sql_line;
-				if(preg_match("/(.*);/", $clean_query)) {
-					$clean_query = stripslashes(substr($clean_query, 0, strlen($clean_query)));
-					$q = $clean_query;
-					$this->last_query = $q;
-					$result = $this->query($q);
-					if (!$result) {
-						die("<pre>" . print_r($this->error_details(),true) . "</pre>");
-					} else {
-						$q = "";
-						$clean_query = "";
-					}
-				}
-			}
-		}
-	}
+        } catch(PDOException $e) {
+            $this->errno = $e->getCode();
+            $this->error = $e->getMessage();
+        }
+    }
 
-	/* Error Handling */
- 	private function check_errors() {
- 	 	switch($this->db['phptype']) {
- 	 		case "sqlite":
-				if ($this->sqlite_version == 3) {
-					$this->errno = $this->conn->lastErrorCode();
-					$this->error = $this->conn->lastErrorMsg();
-				} else {
-					$this->errno = sqlite_last_error($this->conn);
-					$this->error = sqlite_error_string($this->errno);
-				}
- 	 			break;
- 	 		case "mysql":
- 	 			$this->errno = mysql_errno($this->conn);
- 	 			$this->error = mysql_error($this->conn);
- 	 			break;
- 	 		case "mysqli":
-				if (mysqli_connect_error()) {
-					die('Connect Error: ' . mysqli_connect_error());
-				}
- 	 			$this->errno = mysqli_errno($this->conn);
- 	 			$this->error = mysqli_error($this->conn);
- 	 			break;
- 	 	}
+    function insert($table, $db_record) {
+        $this->create($table, $db_record);
+    }
 
- 	}
+    function update($table, $db_record, $where)
+    {
+        $update_params = $this->parametrize($db_record);
+        $where_params = $this->parametrize_where_array($where);
 
- 	function error_details() {
- 	 	return array("query" => $this->last_query, "errno" => $this->errno, "error" => $this->error);
- 	}
+        try {
+            $this->statement =  $this->db->prepare(
+                sprintf('UPDATE %s SET %s WHERE %s',
+                    $table,
+                    $update_params['update_record'],
+                    $where_params['where_statement']
+                )
+            );
+            $this->statement->execute(
+                array_merge(
+                    $update_params['record_values'],
+                    $where_params['where_values']
+                )
+            );
 
-	function encapsulate_column_name($column_name) {
-		switch($this->db['phptype']) {
- 	 		case "sqlite":
- 	 			return "[".$column_name."]";
- 	 			break;
- 	 		case "mysql":
- 	 			return "`".$column_name."`";
- 	 			break;
- 	 		case "mysqli":
-				return "`".$column_name."`";
- 	 			break;
- 	 	}
-	}
+            $this->affected_rows = $this->statement->rowCount();
+            $this->last = $this->db->lastInsertId();
 
-  function geo_detect_coord_cols($table) {
-		$res = $this->select("*", $table, array(), "", array(), 1)->fetch_assoc();
-		$lat_keys = array("lat","latitude");
-		$lon_keys = array("lon","lng","longitude");
-		foreach($res as $res_key => $res_val) {
-			if (in_array($res_key,$lat_keys)) { $this->lat_col = $res_key; }
-			if (in_array($res_key,$lon_keys)) { $this->lon_col = $res_key; }
-		}
-		return array("lat_col"=>$this->lat_col,"lon_col"=>$this->lon_col);
-	}
+        } catch(PDOException $e) {
+            $this->errno = $e->getCode();
+            $this->error = $e->getMessage();
+        }
+    }
 
-	/* **
-	 * Basic DSN Parser.
-	 *
-	 * phptype://[username]@[host]:[password]/[database][arguments]
-	 * or
-	 * array([dsn parameters])
-	 */
-	function parseDSN($dsn) {
-	 	if (is_array($dsn)) {
-			return $dsn;
-		} else {
-		 	$dsn_match = "|^(?P<phptype>.*?)://(?P<parameters>.*?)/(?P<db>.*?)$|i";
-		 	$parameter_match = "|^(?P<username>.*?):(?P<password>.*?)@(?P<hostspec>.*?)$|i";
-		 	$args_match = '|^(?P<database>.*?)\?(?P<args>.*?)$|';
+    function delete($table, $where)
+    {
+        $where_params = $this->parametrize_where_array($where);
 
-		 	/* First, pick out the phptype, database, and gunk in the middle */
-			preg_match($dsn_match,$dsn,$matches['base']);
-			/* Next, parse the gunk in the middle into username, host, and password */
-			if (!empty($matches['base']['parameters'])) { preg_match($parameter_match,$matches['base']['parameters'],$matches['parameters']); }
-			/* Then, parse the database to see if any commandline parameters were passed */
-			if (substr_count($matches['base']['db'],"?") > 0) { preg_match($args_match,$matches['base']['db'],$matches['args']); }
+        try {
+            $this->statement =  $this->db->prepare(
+                sprintf('DELETE FROM %s WHERE %s',
+                    $table,
+                    $where_params['where_statement']
+                )
+            );
+            $this->statement->execute(
+                $where_params['where_values']
+            );
 
-			$retn = array();
-			$retn['phptype'] = $matches['base']['phptype'];
-			if (!empty($matches['base']['parameters']) && is_array($matches['parameters'])) {
-			 	$retn['username'] = $matches['parameters']['username'];
-			 	$retn['password'] = $matches['parameters']['password'];
-			 	$retn['hostspec'] = $matches['parameters']['hostspec'];
-			}
-			if (!empty($matches['args']) && is_array($matches['args'])) {
-			 	$retn['database'] = $matches['args']['database'];
-			 	$retn['args'] = $this->parseDSN_args($matches['args']['args']);
-			} else {
-			 	$retn['database'] = $matches['base']['db'];
-			}
-			return $retn;
-		}
+            $this->affected_rows = $this->statement->rowCount();
+
+        } catch(PDOException $e) {
+            $this->errno = $e->getCode();
+            $this->error = $e->getMessage();
+        }
+    }
+
+    function select($columns = array(), $table, $where = array(), $order = array(), $limit = false)
+    {
+        if (!is_array($columns)) {
+            $select_columns = $columns;
+        } elseif (count($columns) == 0) {
+            $select_columns = "*";
+        } else {
+            foreach ($columns as $column_key => $column_name) {
+                $columns[$column_key] = $this->encapsulate_column_name($column_name);
+            }
+            $select_columns = implode(',', $columns);
+        }
+
+        $where_params = $this->parametrize_where_array($where);
+
+        if (count($order) > 0) {
+            $is_order = true;
+            $orders = array();
+            foreach ($order as $ok => $ov) {
+                $orders[] = $this->encapsulate_column_name($ok) . " " . $ov;
+            }
+            $select_order = implode(",", $orders);
+        } else {
+            $is_order = false;
+        }
+
+        $q = sprintf('SELECT %s FROM %s WHERE %s',
+            $select_columns,
+            $table,
+            $where_params['where_statement']
+        );
+
+        if ($is_order) {
+            $q = sprintf('%s ORDER BY %s', $select_order);
+        }
+
+        if ($limit !== false) {
+            $q = sprintf('%s LIMIT %i', $q, $limit);
+        }
+
+        try {
+            $this->statement =  $this->db->prepare($q);
+            $this->statement->execute(
+                $where_params['where_values']
+            );
+
+            $this->affected_rows = $this->statement->rowCount();
+
+            
+
+        } catch(PDOException $e) {
+            $this->errno = $e->getCode();
+            $this->error = $e->getMessage();
+        };
+    }
+
+    /* Select places with coordinates within $radius miles/kilometers of a point */
+    function select_geo($table, $latitude, $longitude, $radius = 0, $results = 0, $miles = true, $additional_where = false)
+    {
+        $coord_cols = $this->geo_detect_coord_cols($table);
+
+        $q = "SELECT *, (" . ($miles ? "3959" : "6371") . " * acos(cos(radians(" . $latitude . ")) * cos(radians(" . $this->lat_col . ")) * cos(radians(" . $this->lon_col . ") - radians(" . $longitude . ")) + sin(radians(" . $latitude . ")) * sin(radians(" . $this->lat_col . ")))) AS distance FROM " . $this->encapsulate_column_name($table);
+
+        if ($radius > 0) {
+            $q .= " HAVING distance < " . $radius;
+        }
+        if ($additional_where !== false) {
+            $q .= "WHERE $additional_where";
+        }
+        $q .= " ORDER BY distance";
+        if ($results > 0) {
+            $q .= " LIMIT $results;";
+        }
+
+        return $this->query($q);
+    }
+
+
+
+    function table2array($table)
+    {
+        $items = $this->select("*", $table);
+        $retn = array();
+        while ($item = $items->fetch_assoc()) {
+            $retn["$item[key]"] = $item['val'];
+        }
+        return $retn;
+    }
+
+    /* **
+     * Check to see if $data exists in $table, and return it if it does, or false if not.
+     */
+    function record_exists($table, $data)
+    {
+        $pairs = array();
+        foreach ($data as $key => $value) {
+            if (!is_numeric($value)) {
+                $pairs[] = $this->encapsulate_column_name($key) . " = '" . $this->escape($value) . "'";
+            } else {
+                $pairs[] = $this->encapsulate_column_name($key) . " = $value";
+            }
+        }
+        $where = implode(" AND ", $pairs);
+        $records = $this->select("*", $table, $data);
+        if ($records->num_rows > 0) {
+            return $records;
+        } else {
+            return false;
+        }
+    }
+
+    function run($sql_file)
+    {
+        $sql_file_contents = file_get_contents($sql_file);
+        $rawsql = explode("\n", $sql_file_contents);
+        $q = "";
+        $clean_query = "";
+        foreach ($rawsql as $sql_line) {
+            if (trim($sql_line) != "" && strpos($sql_line, "--") === false) {
+                $clean_query .= $sql_line;
+                if (preg_match("/(.*);/", $clean_query)) {
+                    $clean_query = stripslashes(substr($clean_query, 0, strlen($clean_query)));
+                    $q = $clean_query;
+                    $this->last_query = $q;
+                    $result = $this->query($q);
+                    if (!$result) {
+                        die("<pre>" . print_r($this->error_details(), true) . "</pre>");
+                    } else {
+                        $q = "";
+                        $clean_query = "";
+                    }
+                }
+            }
+        }
+    }
+
+    /* Error Handling */
+    private function check_errors()
+    {
+        switch ($this->db['phptype']) {
+            case "sqlite":
+                if ($this->sqlite_version == 3) {
+                    $this->errno = $this->conn->lastErrorCode();
+                    $this->error = $this->conn->lastErrorMsg();
+                } else {
+                    $this->errno = sqlite_last_error($this->conn);
+                    $this->error = sqlite_error_string($this->errno);
+                }
+                break;
+            case "mysql":
+                $this->errno = mysql_errno($this->conn);
+                $this->error = mysql_error($this->conn);
+                break;
+            case "mysqli":
+                if (mysqli_connect_error()) {
+                    die('Connect Error: ' . mysqli_connect_error());
+                }
+                $this->errno = mysqli_errno($this->conn);
+                $this->error = mysqli_error($this->conn);
+                break;
+        }
+
+    }
+
+    function error_details()
+    {
+        return array("query" => $this->last_query, "errno" => $this->errno, "error" => $this->error);
+    }
+
+    function encapsulate_column_name($column_name)
+    {
+        switch ($this->db['phptype']) {
+            case "sqlite":
+                return "[" . $column_name . "]";
+                break;
+            case "mysql":
+                return "`" . $column_name . "`";
+                break;
+            case "mysqli":
+                return "`" . $column_name . "`";
+                break;
+        }
+    }
+
+    function geo_detect_coord_cols($table)
+    {
+        $res = $this->select("*", $table, array(), "", array(), 1)->fetch_assoc();
+        $lat_keys = array("lat", "latitude");
+        $lon_keys = array("lon", "lng", "longitude");
+        foreach ($res as $res_key => $res_val) {
+            if (in_array($res_key, $lat_keys)) {
+                $this->lat_col = $res_key;
+            }
+            if (in_array($res_key, $lon_keys)) {
+                $this->lon_col = $res_key;
+            }
+        }
+        return array("lat_col" => $this->lat_col, "lon_col" => $this->lon_col);
+    }
+
+    /* **
+     * Basic DSN Parser.
+     *
+     * phptype://[username]@[host]:[password]/[database][arguments]
+     * or
+     * array([dsn parameters])
+     */
+    function parseDSN($dsn)
+    {
+        if (is_array($dsn)) {
+            return $dsn;
+        } else {
+            $dsn_match = "|^(?P<phptype>.*?)://(?P<parameters>.*?)/(?P<db>.*?)$|i";
+            $parameter_match = "|^(?P<username>.*?):(?P<password>.*?)@(?P<hostspec>.*?)$|i";
+            $args_match = '|^(?P<database>.*?)\?(?P<args>.*?)$|';
+
+            /* First, pick out the phptype, database, and gunk in the middle */
+            preg_match($dsn_match, $dsn, $matches['base']);
+            /* Next, parse the gunk in the middle into username, host, and password */
+            if (!empty($matches['base']['parameters'])) {
+                preg_match($parameter_match, $matches['base']['parameters'], $matches['parameters']);
+            }
+            /* Then, parse the database to see if any commandline parameters were passed */
+            if (substr_count($matches['base']['db'], "?") > 0) {
+                preg_match($args_match, $matches['base']['db'], $matches['args']);
+            }
+
+            $retn = array();
+            $retn['phptype'] = $matches['base']['phptype'];
+            if (!empty($matches['base']['parameters']) && is_array($matches['parameters'])) {
+                $retn['username'] = $matches['parameters']['username'];
+                $retn['password'] = $matches['parameters']['password'];
+                $retn['hostspec'] = $matches['parameters']['hostspec'];
+            }
+            if (!empty($matches['args']) && is_array($matches['args'])) {
+                $retn['database'] = $matches['args']['database'];
+                $retn['args'] = $this->parseDSN_args($matches['args']['args']);
+            } else {
+                $retn['database'] = $matches['base']['db'];
+            }
+            return $retn;
+        }
     }
 
     /* Helper function to break dsn arguments into an array */
-    function parseDSN_args($args) {
-     	$retn = array();
-     	foreach(explode("&",$args) as $arg) {
-     	 	list($key,$val) = explode("=",trim($arg));
-     	 	$retn[$key] = $val;
-     	 	unset($key,$val);
-     	}
-     	return $retn;
+    function parseDSN_args($args)
+    {
+        $retn = array();
+        foreach (explode("&", $args) as $arg) {
+            list($key, $val) = explode("=", trim($arg));
+            $retn[$key] = $val;
+            unset($key, $val);
+        }
+        return $retn;
     }
 }
 
-class sqlite_result {
- 	var $result 	= NULL;
- 	var $conn		= NULL;
- 	var $num_rows	= 0;
- 	var $field_count = 0;
+class sqlite_result
+{
+    var $result = NULL;
+    var $conn = NULL;
+    var $num_rows = 0;
+    var $field_count = 0;
 
-	function __construct($result, $conn) {
-	 	$this->result 		= $result;
-	 	$this->conn			= $conn;
-	 	$this->num_rows		= sqlite_num_rows($this->result);
-	 	$this->field_count 	= sqlite_num_fields($this->result);
-	}
+    function __construct($result, $conn)
+    {
+        $this->result = $result;
+        $this->conn = $conn;
+        $this->num_rows = sqlite_num_rows($this->result);
+        $this->field_count = sqlite_num_fields($this->result);
+    }
 
-	function data_seek($rownum) {
-	 	return sqlite_seek($this->result,$rownum);
-	}
+    function data_seek($rownum)
+    {
+        return sqlite_seek($this->result, $rownum);
+    }
 
-	/* If you want these functions to be like the MySQLiResult Class, the flag should be SQLITE_NUM */
-	function fetch_all($result_type = SQLITE_BOTH) {
-	 	return sqlite_fetch_all($this->result, $result_type, true);
-	}
+    /* If you want these functions to be like the MySQLiResult Class, the flag should be SQLITE_NUM */
+    function fetch_all($result_type = SQLITE_BOTH)
+    {
+        return sqlite_fetch_all($this->result, $result_type, true);
+    }
 
-	function fetch_array($result_type = SQLITE_BOTH) {
-	 	return sqlite_fetch_array($this->result, $result_type, true);
-	}
+    function fetch_array($result_type = SQLITE_BOTH)
+    {
+        return sqlite_fetch_array($this->result, $result_type, true);
+    }
 
-	function fetch_assoc() {
-	 	return sqlite_fetch_array($this->result, SQLITE_ASSOC);
-	}
+    function fetch_assoc()
+    {
+        return sqlite_fetch_array($this->result, SQLITE_ASSOC);
+    }
 }
 
-class sqlite3_result {
- 	var $result 	= NULL;
- 	var $conn		= NULL;
- 	var $num_rows	= 0;
- 	var $field_count = 0;
+class sqlite3_result
+{
+    var $result = NULL;
+    var $conn = NULL;
+    var $num_rows = 0;
+    var $field_count = 0;
 
-	function __construct($result, $conn) {
-	 	$this->result 		= $result;
-	 	$this->conn			= $conn;
-	 	$this->num_rows		= $this->count_rows();
-	 	$this->field_count 	= $this->result->numColumns();
-	}
+    function __construct($result, $conn)
+    {
+        $this->result = $result;
+        $this->conn = $conn;
+        $this->num_rows = $this->count_rows();
+        $this->field_count = $this->result->numColumns();
+    }
 
-	function data_seek($rownum) {
-		if ($rownum == 0) {
-			return $this->result->reset();
-		} else {
-			return false;
-		}
-	}
+    function data_seek($rownum)
+    {
+        if ($rownum == 0) {
+            return $this->result->reset();
+        } else {
+            return false;
+        }
+    }
 
-	function count_rows() {
-		$retn = 0;
-		while($item = $this->fetch_array()) {
-			$retn++;
-		}
-		return $retn;
-	}
+    function count_rows()
+    {
+        $retn = 0;
+        while ($item = $this->fetch_array()) {
+            $retn++;
+        }
+        return $retn;
+    }
 
-	/* If you want these functions to be like the MySQLiResult Class, the flag should be SQLITE_NUM */
-	function fetch_all($result_type = SQLITE_BOTH) {
-		$retn = array();
-		while($item = $this->fetch_array()) {
-			$retn[] = $item;
-		}
-		return $retn;
-	}
+    /* If you want these functions to be like the MySQLiResult Class, the flag should be SQLITE_NUM */
+    function fetch_all($result_type = SQLITE_BOTH)
+    {
+        $retn = array();
+        while ($item = $this->fetch_array()) {
+            $retn[] = $item;
+        }
+        return $retn;
+    }
 
-	function fetch_array($result_type = SQLITE3_BOTH) {
-		return $this->result->fetchArray($result_type);
-	}
+    function fetch_array($result_type = SQLITE3_BOTH)
+    {
+        return $this->result->fetchArray($result_type);
+    }
 
-	function fetch_assoc() {
-		return $this->fetch_array(SQLITE3_ASSOC);
-	}
+    function fetch_assoc()
+    {
+        return $this->fetch_array(SQLITE3_ASSOC);
+    }
 }
 
-class mysql_result {
- 	var $result 	= NULL;
- 	var $conn		= NULL;
- 	var $num_rows	= 0;
- 	var $field_count = 0;
+class mysql_result
+{
+    var $result = NULL;
+    var $conn = NULL;
+    var $num_rows = 0;
+    var $field_count = 0;
 
-	function __construct($result, $conn) {
-	 	$this->result 		= $result;
-	 	$this->conn			= $conn;
-	 	$this->num_rows		= mysql_num_rows($this->result);
-	}
+    function __construct($result, $conn)
+    {
+        $this->result = $result;
+        $this->conn = $conn;
+        $this->num_rows = mysql_num_rows($this->result);
+    }
 
-	function data_seek($rownum) {
-	 	return mysql_data_seek($this->result,$rownum);
-	}
+    function data_seek($rownum)
+    {
+        return mysql_data_seek($this->result, $rownum);
+    }
 
-	/* If you want these functions to be like the MySQLiResult Class, the flag should be MYSQL_NUM */
-	function fetch_all($result_type = MYSQL_BOTH) {
-	 	return mysql_fetch_array($this->result, $result_type);
-	}
+    /* If you want these functions to be like the MySQLiResult Class, the flag should be MYSQL_NUM */
+    function fetch_all($result_type = MYSQL_BOTH)
+    {
+        return mysql_fetch_array($this->result, $result_type);
+    }
 
-	function fetch_array($result_type = MYSQL_BOTH) {
-	 	return mysql_fetch_array($this->result, $result_type);
-	}
+    function fetch_array($result_type = MYSQL_BOTH)
+    {
+        return mysql_fetch_array($this->result, $result_type);
+    }
 
-	function fetch_assoc() {
-	 	return mysql_fetch_assoc($this->result);
-	}
+    function fetch_assoc()
+    {
+        return mysql_fetch_assoc($this->result);
+    }
 }
+
 ?>
